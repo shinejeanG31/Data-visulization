@@ -1,0 +1,492 @@
+---
+title: "project1"
+author: "Shanyao Jing"
+date: "2/21/2020"
+output: html_document
+---
+library(stringr)
+library(magrittr)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(tibble)
+library(ggthemes)
+library(maps)
+
+#Clean Data
+setwd("C:/Users/ShineJean/Documents/2019/0-2020Spring/IE6600/Project1")
+data <- read.csv("fmarket.csv", 
+                 encoding="UTF-8", stringsAsFactors = F, na.strings = c(""))
+data$ts<-as.character(data$updateTime)
+data$year<-str_extract(data$ts, "20+[:digit:]+[:digit:]")
+#write.csv(data, 'fmarket_clean.csv')
+
+#Examine
+#ts<-select(data,updateTime,year)
+#write.csv(ts, 'ts.csv')
+
+count<-data%>%
+  group_by(State,year) %>%
+  summarise(Count=n())
+
+```{r}
+#map
+#Figure1
+y<-data%>%
+  group_by(State) %>%
+  summarise(Count=n())
+us_states <- map_data('state')
+y$State <- tolower(y$State)
+mode(y$Count)
+colnames(y)[1]='region'
+us_states_fmarket <- left_join(us_states,y)
+head(us_states_fmarket)
+mode(us_states_fmarket$Count)
+
+snames <- aggregate(cbind(long,lat)~region,data=us_states_fmarket,FUN=function(x) mean(range(x)))
+ggplot()+
+  geom_polygon(data = us_states_fmarket,
+               mapping = aes(x = long, y = lat, group = group, fill = Count),
+               color = "gray90", size = 0.1)+
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
+  scale_fill_gradient(name='Count',low='white',high='#840050')+
+  labs(title = "Number of Markets across USA") + 
+  theme_map()+
+  labs(fill = "count")+ 
+  geom_text(data=snames,aes(long,lat,label=region))+
+  theme_economist(base_size = 14)+
+  theme(legend.text=element_text(size=rel(0.6)))+
+  xlab("Longitude")+ylab("Latitude")
+
+ggsave("map.png",device = "png",width = 12, height = 12, dpi = 300)
+ 
+```
+
+  
+sc<-data%>%
+  group_by(State) %>%
+  summarise(Count=n()) 
+count2<-filter(count, State == sc[1,1])
+count2<- as.data.frame(count2[,-1])
+
+for (i in 2:53) {
+  df <- filter(count, State == sc[i,1])
+  df <- as.data.frame(df[,-1])
+  count2 <- merge(count2,df,by="year", all = TRUE)
+}
+ 
+ 
+x<-pull(sc,State)
+colnames(count2)[2:54]<-x
+count_t<-data.frame(t(count2),stringsAsFactors = F)
+sum(is.na(count_t))
+count_t[is.na(count_t)]<-0
+
+start<-data.frame(count_t[-1,1])
+colnames(start)="origin"
+
+#growth rate
+growth<-data%>%
+  group_by(State) %>%
+  summarise(Count=n())
+growth<-cbind(growth,start)
+
+
+a<-data.frame(growth[,2],stringsAsFactors = F)
+b<-data.frame(growth[,3],stringsAsFactors = F)
+b<-as.data.frame(lapply(b,as.numeric))
+c<-(a-b)/11
+
+growth<-growth%>%
+cbind(as.data.frame(round(c,2),stringsAsFactors = F))
+colnames(growth)[4]<-"growth_rate"
+
+```{r}
+#Figure2
+rate_T10_1 <- growth %>%
+  arrange(desc(origin)) %>%
+  head(10)
+b<-data.frame(rate_T10_1[,3],stringsAsFactors = F)
+b<-as.data.frame(lapply(b,as.numeric))
+rate_T10_1<-rate_T10_1%>%
+cbind(b,stringsAsFactors = F)
+colnames(rate_T10_1)[5]<-"origin2"
+
+ggplot(data=rate_T10_1, aes(x = reorder(State, origin2), y = origin2, fill = origin2))+
+  geom_bar(stat = "identity")+coord_flip()+
+  xlab("Top 10 States")+ylab("Numbers of Markets in 2009")+
+  labs(fill = "Number of Markets")+
+  geom_text(data=rate_T10_1,aes(x=State,y=10,label=origin2),color="white")+
+  theme_economist(base_size = 14)+
+  ggtitle("Top 10 States of Markests in 2009")+
+  scale_fill_gradient(low='#7ad2f6',high='#014d64')+
+  ylim(0,200)+
+  theme(legend.text=element_text(size=rel(0.8)))
+  
+ggsave("2009.png",device = "png",width = 10, height = 7, dpi = 300)
+
+```
+
+
+
+```{r}
+#Figure4
+rate_T10_2 <- growth %>%
+  arrange(desc(growth_rate)) %>%
+  head(10)
+
+ggplot(data=rate_T10_2, aes(x = reorder(State, growth_rate), y = growth_rate, fill = growth_rate))+
+  geom_bar(stat = "identity")+coord_flip()+
+  xlab("Top 10 States")+ylab("Average Annual Increasing Numbers of Markets")+
+  labs(fill = "number of markets")+
+  #scale_fill_gradient(low='blue',high='red')+
+  geom_text(data=rate_T10_2,aes(x=State,y=5,label=growth_rate),color="white")+
+  theme_economist(base_size = 14)+
+  ggtitle("Top 10 States of Markets Growth from 2009 to 2020")+
+  scale_fill_gradient(low='#7ad2f6',high='#014d64')+
+  theme(legend.text=element_text(size=rel(0.8)))+
+  
+
+ggsave("2009-2020.png",device = "png",width = 10, height = 7, dpi = 300)
+
+```
+
+
+```{r}
+#Figure3
+rate_T10_3 <- growth %>%
+  arrange(desc(Count)) %>%
+  head(10)
+
+ggplot(data=rate_T10_3, aes(x = reorder(State, Count), y = Count, fill = Count))+
+  geom_bar(stat = "identity")+coord_flip()+
+  xlab("Top 10 States")+ylab("Numbers of markets in 2020")+
+  labs(fill = "number of markets")+
+  geom_text(data=rate_T10_3,aes(x=State,y=50,label=Count),color="white")+
+  theme_economist(base_size = 14)+
+  ggtitle("Top 10 States of Markests in 2020")+
+  scale_fill_gradient(low='#7ad2f6',high='#014d64')+
+  theme(legend.text=element_text(size=rel(0.6)))+
+  ylim(0,800)
+
+ggsave("2020.png",device = "png",width = 10, height = 7, dpi = 300)
+
+```
+
+```{r}
+#view column names
+colnames(data)
+data%>%
+```
+
+```{r}
+#Product
+#Figure5
+product<-data%>%
+  select(State,Organic,Bakedgoods,Cheese,Crafts,Flowers,Eggs,Seafood,Herbs,Vegetables,Honey,Jams,Maple,Meat,Nursery,Nuts,Plants,Poultry,Prepared,Soap,Trees,Wine,Coffee,Beans,Fruits,Grains,Juices,Mushrooms,PetFood,Tofu,WildHarvested)
+
+product[product == 'Y'] = 1
+product[product == 'N'] = 0
+product[product == '-'] = 0
+
+product2<-as.data.frame(lapply(product[,-1],as.numeric))    
+state<-data.frame(product[,1],stringsAsFactors = F)
+product<-cbind(state,product2)
+colnames(product)[1]<-"State"
+
+NorthEast<-c("Maine","New Hampshire","Vermont","Massachusetts","Rhode Island","Connecticut",
+            "New York","New Jersey","Pennsylvania")
+
+MidWest<-c("Ohio", "Michigan", "Indiana", "Wisconsin", "Illinois", "Minnesota", "Iowa",
+           "Missouri", "North Dakota", "South Dakota", "Nebraska", "Kansas")
+
+South<-c("Delaware","Maryland","District of Columbia","Virginia","West Virginia",
+         "North Carolina","South Carolina","Georgia","Florida","Kentucky","Tennessee",
+         "Mississippi","Alabama","Oklahoma","Texas","Arkansas","Louisiana")
+
+West<-c("Idaho","Montana","Wyoming","Nevada","Utah","Colorado","Arizona","New Mexico",
+        "Alaska","Washington","Oregon","California","Hawaii")
+
+product$region<-ifelse(product$State %in% NorthEast,"NorthEast",
+       ifelse((product$State %in% MidWest),"MidWest",
+            ifelse((product$State %in% South),"South",
+               ifelse((product$State %in% West),"West","Other"))))
+
+pr<-product %>%
+  group_by(region) %>%
+  summarise(Count=n()) 
+pr<-pr[,-2]
+
+tn<-data.frame(c("Organic","Bakedgoods","Cheese","Crafts","Flowers","Eggs","Seafood","Herbs","Vegetables","Honey","Jams","Maple","Meat","Nursery","Nuts","Plants","Poultry","Prepared","Soap","Trees","Wine","Coffee","Beans","Fruits","Grains","Juices","Mushrooms","PetFood","Tofu","WildHarvested"))
+
+for (t in 1:30) {
+  a<-tn[t,1]
+  filter<-filter(product,product[,t+1]==1)
+  filter<-filter[,c(t+1,32)]
+  type<-filter %>%
+  group_by(region) %>%
+  summarise(Count=n()) 
+  pr<-merge(pr,type,by = "region", all = TRUE)
+ 
+}
+
+
+pr[is.na(pr)] <- 0
+colnames(pr)[-1]<-c("Organic","Bakedgoods","Cheese","Crafts","Flowers","Eggs","Seafood","Herbs","Vegetables","Honey","Jams","Maple","Meat","Nursery","Nuts","Plants","Poultry","Prepared","Soap","Trees","Wine","Coffee","Beans","Fruits","Grains","Juices","Mushrooms","PetFood","Tofu","WildHarvested")
+prt<-data.frame(t(pr),stringsAsFactors = F)
+head（prt)
+prt<-prt[-1,]
+colnames(prt) <- c("MidWest","NorthEast","Other","South","West")
+prt<- rownames_to_column(prt, var= "region") 
+prtg<-as.data.frame(gather(prt,distribution,count,-region))
+mode(prtg$count)
+prtg$count<-as.numeric(prtg$count)
+
+label1<-summarise(group_by(prtg,region),amount=sum(count))
+prtg<-left_join(prtg,label1)
+#write.csv(prtg,"bar.csv")
+
+ggplot(data=prtg, aes(x=reorder(region,count),y=count,fill=distribution))+
+  geom_bar(stat = "identity",position="stack")+xlab("Types of Products")+coord_flip()+
+  ylab("Numbers of Markets")+
+  labs(fill = "Regions")+
+  theme_economist(base_size = 14)+scale_fill_economist()+
+  ggtitle("Distribution of Products by Regions")+
+  theme(legend.text=element_text(size=rel(0.6)))+
+  geom_text(data=prtg,aes(x=reorder(region,count),y=6000,label=amount)，color="#808080")
+  #theme(axis.ticks.x = element_blank(),axis.text.x = element_blank())
+  
+
+
+
+ggsave("product.png",device = "png",width = 10, height = 10, dpi = 300)
+```
+
+```{r}
+#Pie plot
+#Figure6
+pie<-data%>%
+  select(State, Credit, WIC, WICcash, SFMNP, SNAP)
+
+pie[pie == 'Y'] = 1
+pie[pie == 'N'] = 0
+pie[pie == '-'] = 0
+
+pie2<-as.data.frame(lapply(pie[,-1],as.numeric))    
+state2<-data.frame(pie[,1],stringsAsFactors = F)
+pie<-cbind(state2,pie2)
+colnames(pie)[1]<-"State"
+
+NorthEast<-c("Maine","New Hampshire","Vermont","Massachusetts","Rhode Island","Connecticut",
+            "New York","New Jersey","Pennsylvania")
+
+MidWest<-c("Ohio", "Michigan", "Indiana", "Wisconsin", "Illinois", "Minnesota", "Iowa",
+           "Missouri", "North Dakota", "South Dakota", "Nebraska", "Kansas")
+
+South<-c("Delaware","Maryland","District of Columbia","Virginia","West Virginia",
+         "North Carolina","South Carolina","Georgia","Florida","Kentucky","Tennessee",
+         "Mississippi","Alabama","Oklahoma","Texas","Arkansas","Louisiana")
+
+West<-c("Idaho","Montana","Wyoming","Nevada","Utah","Colorado","Arizona","New Mexico",
+        "Alaska","Washington","Oregon","California","Hawaii")
+
+pie$region<-ifelse(pie$State %in% NorthEast,"NorthEast",
+       ifelse((pie$State %in% MidWest),"MidWest",
+            ifelse((pie$State %in% South),"South",
+               ifelse((pie$State %in% West),"West","Other"))))
+
+           
+P_count<-data.frame(colSums(pie[,c(2:6)]),stringsAsFactors = F)
+colnames(P_count)<-"count"
+amount<-colSums(P_count['count'])
+P_count<-rownames_to_column(P_count,var="Payment")
+
+
+P_count<-mutate(P_count,percentage=round(count/amount*100,1))
+
+#write.csv(P_count, 'P_count.csv')
+  
+label<-paste(P_count$Payment,P_count$count,P_count$percentage)
+label<-paste(label,"%",sep="")
+number<-P_count$percentage
+pie(number,labels =label,col=rainbow(length(label)),main="Percentage of Payment Method across USA")
+
+
+ggplot(data=P_count, aes(x = "", y = percentage, fill = percentage))+
+geom_bar(stat = "identity")+
+coord_polar("y", start=0)+
+theme_economist(base_size = 14)+
+geom_text(aes(y = P_count$percentage/2 +
+  c(0,cumsum(P_count$percentage)[-length(P_count$percentage)]), x =
+  sum(P_count$percentage)/90, label = label),color="white")+
+  ggtitle("Percentage of Payment System")+
+theme(legend.text=element_text(size=rel(0.6)))
+ 
+
+ggsave("payment.png",device = "png",width = 8, height = 8, dpi = 300)
+ 
+```
+
+
+```{r}
+#Figure11
+fmarket<-data
+f1 <-
+  fmarket %>% 
+  filter(Fruits=='Y') %>% 
+  group_by(State) %>% 
+  summarise(count=n())
+us_states <- map_data('state')
+f1$State <- tolower(f1$State)
+colnames(f1)[1]='region'
+us_states_fmarket <- left_join(us_states,f1)
+head(us_states_fmarket)
+snames <- aggregate(cbind(long,lat)~region,data=us_states_fmarket,FUN=function(x) mean(range(x)))
+ggplot()+
+  geom_polygon(data = us_states_fmarket,
+               mapping = aes(x = long, y = lat, group = group, fill = count),
+               color = "gray90", size = 0.1)+
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
+  scale_fill_gradient(name='Count',low='white',high='#50b883')+
+  labs(title = "Distribution of Fruits across USA") + 
+  theme_map() + 
+  labs(fill = "count")+
+  theme(legend.text=element_text(size=14))+ 
+  geom_text(data=snames,aes(long,lat,label=region))+
+  theme_economist(base_size = 14)+
+  theme(legend.text=element_text(size=rel(0.6)))+
+  xlab("Longitude")+ylab("Latitude")
+
+ggsave("map1.png",device = "png",width = 12, height = 12, dpi = 300)
+ 
+```
+
+```{r}
+#Figure10
+f2 <-
+  fmarket %>% 
+  filter(fmarket$SFMNP=='Y') %>% 
+  group_by(State) %>% 
+  summarise(count=n())
+us_states <- map_data('state')
+f2$State <- tolower(f2$State)
+colnames(f2)[1]='region'
+us_states_fmarket <- left_join(us_states,f2)
+us_states_fmarket[is.na(us_states_fmarket)] <- 0
+ggplot()+
+  geom_polygon(data = us_states_fmarket,
+               mapping = aes(x = long, y = lat, group = group, fill = count),
+               color = "gray90", size = 0.1)+
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
+  scale_fill_gradient(name='Count',low='white',high='orange')+
+  labs(title = "Distribution of SFMNP in Each State")+
+  theme_map() + 
+  labs(fill = "count")+ 
+  theme(legend.text=element_text(size=8))+ 
+  geom_text(data=snames,aes(long,lat,label=region)) +
+  theme_economist(base_size = 14)+
+  theme(legend.text=element_text(size=rel(0.6)))+
+  xlab("Longitude")+ylab("Latitude")
+
+ggsave("map2.png",device = "png",width = 12, height = 12, dpi = 300)
+ 
+```
+
+
+```{r}
+#line
+#Figure8
+fmarket<-data
+d_fruits <- fmarket %>% filter(Fruits=='Y') %>% 
+  filter(SFMNP=='Y') %>% select(year)
+#d_f <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=Freq+lag(Freq)) %>% select(-Freq)
+d_1 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_1
+colnames(d_1)=c('year','Fruit')
+d_fruits <- fmarket %>% filter(Vegetables=='Y') %>% 
+  filter(SFMNP=='Y') %>% select(year)
+d_2 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_2
+colnames(d_2)=c('year','Vegetables')
+d_fruits <- fmarket %>% filter(Honey=='Y') %>% 
+  filter(SFMNP=='Y') %>% select(year)
+d_3 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_3
+colnames(d_3)=c('year','Honey')
+d_fruits <- fmarket %>% filter(Herbs=='Y') %>% 
+  filter(SFMNP=='Y') %>% select(year)
+d_4 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_4
+colnames(d_4)=c('year','Herbs')
+d_all <- left_join(left_join(left_join(d_2,d_3),d_4),d_1)
+d_all$year <- as.numeric(d_all$year)
+d_all[1,5]=0
+d_all[2,5]=0
+df <- d_all %>% 
+  tidyr::gather(key='variable',value='value',-year)
+df
+df[is.na(df)] <- 0
+ggplot(df, aes(x = year, y = value)) + 
+  geom_line(size=1,aes(color = variable))+
+  geom_point(size=3, shape=20,color='orange')+
+  scale_x_discrete(limits=2011:2020)+scale_color_manual(values = c("#840050",'#8bc3a0','#36345c','#895617'))+
+  theme_bw()+
+  labs(xlab = "Year", ylab = "Count",
+  title = "Market Growth of Products Supported by SFMNP")+
+  theme_economist(base_size = 14)+
+  theme(legend.title = element_blank(),legend.text=element_text(size=rel(1)))+
+  xlab("Year")+ylab("Number of Markets")+
+  ylim(0,3000)
+
+ggsave("line.png",device = "png",width =9, height = 10, dpi = 300)
+ 
+```
+
+```{r}
+#line2
+#Figure9
+fmarket<-data
+d_fruits <- fmarket %>% filter(Fruits=='Y') %>% 
+  filter(SFMNP!='Y') %>% select(year)
+d_1 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_1
+colnames(d_1)=c('year','Fruit')
+d_fruits <- fmarket %>% filter(Vegetables=='Y') %>% 
+  filter(SFMNP!='Y') %>% select(year)
+d_2 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_2
+colnames(d_2)=c('year','Vegetables')
+d_fruits <- fmarket %>% filter(Honey=='Y') %>% 
+  filter(SFMNP!='Y') %>% select(year)
+d_3 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_3
+colnames(d_3)=c('year','Honey')
+d_fruits <- fmarket %>% filter(Herbs=='Y') %>% 
+  filter(SFMNP!='Y') %>% select(year)
+d_4 <- table(d_fruits) %>% as.data.frame() %>% mutate(Real=cumsum(Freq))%>% select(-Freq)
+d_4
+colnames(d_4)=c('year','Herbs')
+d_all <- left_join(left_join(left_join(d_2,d_3),d_4),d_1)
+d_all$year <- as.numeric(d_all$year)
+d_all[1,5]=0
+d_all[2,5]=0
+df <- d_all %>% 
+  tidyr::gather(key='variable',value='value',-year)
+df
+df[is.na(df)] <- 0
+ggplot(df, aes(x = year, y = value)) + 
+  geom_line(size=1,aes(color = variable))+
+  geom_point(size=3, shape=20,color='orange')+
+  scale_x_discrete(limits=2011:2020)+scale_color_manual(values = c("#840050",'#8bc3a0','#36345c','#895617'))+
+  theme_bw()+
+  labs(xlab = "Year", ylab = "Count",
+  title = "Market Growth of Products Not Supported by SFMNP")+
+  theme_economist(base_size = 14)+
+  theme(legend.title = element_blank(),legend.text=element_text(size=rel(1)))+
+  xlab("Year")+ylab("Number of Markets")
+
+ggsave("line2.png",device = "png",width = 9, height = 10, dpi = 300)
+ 
+```
+
